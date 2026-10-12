@@ -35,6 +35,7 @@ work_dirs_*/
 last_checkpoint
 *.log
 *.json
+!/splits/*/split_report.json
 events.out.tfevents*
 *.png
 *.jpg

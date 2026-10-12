@@ -1,0 +1,78 @@
+{
+  "dataset": "FFA",
+  "classes": [
+    "Lesion_Leakage",
+    "Lesion_Accumulate",
+    "Lesion_Dyeing",
+    "Lesion_Shading",
+    "Lesion_Inperfusion",
+    "Lesion_Vessel_Abnormal"
+  ],
+  "annotation_files": {
+    "train": "FFA/train_class6.pkl",
+    "val": "FFA/val_class6.pkl",
+    "test": "FFA/test_class6.pkl"
+  },
+  "image_path_base": "external image root (the directory containing FFA, Endo, OIA-ODIR)",
+  "patient_id_basis": "original_case in FFA class6 CSVs; grouping code uses patient folders",
+  "assignment": "existing assignments preserved",
+  "official_split_membership_independently_verified": false,
+  "source_annotation_sha256": {
+    "FFA/train_class6.pkl": "743fd8534c0467b41f5571648ba824ebaf6e3ab6069a228d687ca57922d50122",
+    "FFA/val_class6.pkl": "ff108696bc40c7e51502216655adb87614458ebeaddf3aa77ac69056c004c73c",
+    "FFA/test_class6.pkl": "728d3aaba9f6cc9af2f5ec29231615397eec9cfa7cfe1a3780d60eb874eae302"
+  },
+  "split_statistics": {
+    "test": {
+      "patients": 100,
+      "images": 1100,
+      "positive_images": {
+        "Lesion_Leakage": 1014,
+        "Lesion_Accumulate": 514,
+        "Lesion_Dyeing": 922,
+        "Lesion_Shading": 595,
+        "Lesion_Inperfusion": 453,
+        "Lesion_Vessel_Abnormal": 696
+      }
+    },
+    "train": {
+      "patients": 350,
+      "images": 3789,
+      "positive_images": {
+        "Lesion_Leakage": 3371,
+        "Lesion_Accumulate": 1773,
+        "Lesion_Dyeing": 2953,
+        "Lesion_Shading": 1878,
+        "Lesion_Inperfusion": 1451,
+        "Lesion_Vessel_Abnormal": 2108
+      }
+    },
+    "val": {
+      "patients": 50,
+      "images": 546,
+      "positive_images": {
+        "Lesion_Leakage": 459,
+        "Lesion_Accumulate": 231,
+        "Lesion_Dyeing": 400,
+        "Lesion_Shading": 237,
+        "Lesion_Inperfusion": 212,
+        "Lesion_Vessel_Abnormal": 277
+      }
+    }
+  },
+  "overlap": {
+    "test-train": {
+      "patients": 0,
+      "images": 0
+    },
+    "test-val": {
+      "patients": 0,
+      "images": 0
+    },
+    "train-val": {
+      "patients": 0,
+      "images": 0
+    }
+  },
+  "manifest_sha256": "4e8f3f55715496661259d89c46a37de243b0fc77c1e3ae0536fbbc3ad17b41cc"
+}

@@ -37,7 +37,10 @@ Install the PyTorch build that matches your CUDA version before running experime
 
 ## Data Preparation
 
-Datasets are not included. Put annotation files under `data/` following the paths used by the configs.
+Images are not included. Fixed patient split manifests for FFA, Endo and ODIR are
+versioned under `splits/`. See [the split instructions](splits/README.md) to
+restore annotation files on a different machine. FFA and ODIR preserve the
+existing assignments; Endo uses the revised patient-disjoint split.
 
 Example layout:
 
@@ -52,9 +55,11 @@ data/
     val_class6.pkl
     test_class6.pkl
   Endo/
-    train.pkl
-    val.pkl
-    test.pkl
+    Endo/
+      patient_disjoint_balanced_seed42/
+        train_list.pkl
+        val_list.pkl
+        test_list.pkl
 ```
 
 If your data is stored elsewhere, update the annotation paths in the corresponding config or override them with `--cfg-options`.

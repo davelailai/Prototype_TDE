@@ -1,0 +1,83 @@
+{
+  "dataset": "Endo",
+  "classes": [
+    "ulcer",
+    "erosion",
+    "polyp",
+    "tumor"
+  ],
+  "annotation_files": {
+    "train": "Endo/Endo/patient_disjoint_balanced_seed42/train_list.pkl",
+    "val": "Endo/Endo/patient_disjoint_balanced_seed42/val_list.pkl",
+    "test": "Endo/Endo/patient_disjoint_balanced_seed42/test_list.pkl"
+  },
+  "image_path_base": "external image root (the directory containing FFA, Endo, OIA-ODIR)",
+  "patient_id_basis": "study_id; dataset owner confirmed one study per patient",
+  "assignment": "new patient-disjoint balanced split",
+  "official_split_membership_independently_verified": false,
+  "source_annotation_sha256": {
+    "Endo/Endo/patient_disjoint_balanced_seed42/train_list.pkl": "67ee487ec03a984a5e72d79c189e809637b2f45ceaa75bc13be1943538972849",
+    "Endo/Endo/patient_disjoint_balanced_seed42/val_list.pkl": "bef044c8c6e4032860886a745af053e278787ba60333cf9db11d9c5cceef2846",
+    "Endo/Endo/patient_disjoint_balanced_seed42/test_list.pkl": "134d8b35ac986c68cd684f41c8efa4283ac843e60ae21646fb231dc2512dc88b"
+  },
+  "split_statistics": {
+    "test": {
+      "patients": 16,
+      "images": 726,
+      "positive_images": {
+        "ulcer": 137,
+        "erosion": 245,
+        "polyp": 84,
+        "tumor": 30
+      }
+    },
+    "train": {
+      "patients": 56,
+      "images": 2733,
+      "positive_images": {
+        "ulcer": 561,
+        "erosion": 579,
+        "polyp": 271,
+        "tumor": 94
+      }
+    },
+    "val": {
+      "patients": 8,
+      "images": 406,
+      "positive_images": {
+        "ulcer": 92,
+        "erosion": 127,
+        "polyp": 35,
+        "tumor": 12
+      }
+    }
+  },
+  "overlap": {
+    "test-train": {
+      "patients": 0,
+      "images": 0
+    },
+    "test-val": {
+      "patients": 0,
+      "images": 0
+    },
+    "train-val": {
+      "patients": 0,
+      "images": 0
+    }
+  },
+  "assignment_details": {
+    "seed": 42,
+    "ratios": [
+      0.7,
+      0.1,
+      0.2
+    ],
+    "assignment_strategy": "balanced",
+    "candidate_count": 5000,
+    "balance_objective": "sum of squared relative deviations from split-ratio targets for image count, positive-image counts, and positive-group counts",
+    "coverage_constraints": "at least 10 positive and 10 negative images and 2 positive groups per class in each split",
+    "verification_basis": "user confirmation of one study per patient"
+  },
+  "manifest_sha256": "90116c9ddf02ee735a4f4d7c25ffa04eb0573f6e555faa4b5b1ffba52b1d7485"
+}

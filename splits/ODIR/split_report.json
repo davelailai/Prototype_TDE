@@ -1,0 +1,109 @@
+{
+  "dataset": "ODIR",
+  "classes": [
+    "D",
+    "G",
+    "C",
+    "A",
+    "H",
+    "M",
+    "O"
+  ],
+  "annotation_files": {
+    "train": "OIA-ODIR/train.pkl",
+    "val": "OIA-ODIR/val.pkl",
+    "onsite_test": "OIA-ODIR/onsite_test.pkl",
+    "offsite_test": "OIA-ODIR/offsite_test.pkl"
+  },
+  "image_path_base": "external image root (the directory containing FFA, Endo, OIA-ODIR)",
+  "patient_id_basis": "numeric patient ID in <ID>_left/right image filenames",
+  "assignment": "existing assignments preserved",
+  "official_split_membership_independently_verified": false,
+  "source_annotation_sha256": {
+    "OIA-ODIR/train.pkl": "3a1aef77bb4898faac1dc5752f0bab7b276117dfc79867b6a0c2767af0f99d75",
+    "OIA-ODIR/val.pkl": "d92fbae2b23da9fb935ecd71e0f2a190322140ed6dab4768ca8eae2c15fead97",
+    "OIA-ODIR/onsite_test.pkl": "d8f51bcfa4e12874e668f101a773182ee6982eab0d799ec3bc395e80c1a5f036",
+    "OIA-ODIR/offsite_test.pkl": "815c91f86fa1646c40435c414463f1412982edc02ac80b47b82d754ec93f75fd"
+  },
+  "split_statistics": {
+    "offsite_test": {
+      "patients": 500,
+      "images": 1000,
+      "positive_images": {
+        "D": 254,
+        "G": 40,
+        "C": 45,
+        "A": 39,
+        "H": 30,
+        "M": 39,
+        "O": 150
+      }
+    },
+    "onsite_test": {
+      "patients": 1000,
+      "images": 2000,
+      "positive_images": {
+        "D": 480,
+        "G": 74,
+        "C": 95,
+        "A": 66,
+        "H": 54,
+        "M": 68,
+        "O": 385
+      }
+    },
+    "train": {
+      "patients": 2800,
+      "images": 5600,
+      "positive_images": {
+        "D": 1432,
+        "G": 253,
+        "C": 235,
+        "A": 223,
+        "H": 170,
+        "M": 198,
+        "O": 854
+      }
+    },
+    "val": {
+      "patients": 700,
+      "images": 1400,
+      "positive_images": {
+        "D": 343,
+        "G": 56,
+        "C": 53,
+        "A": 57,
+        "H": 23,
+        "M": 60,
+        "O": 209
+      }
+    }
+  },
+  "overlap": {
+    "offsite_test-onsite_test": {
+      "patients": 0,
+      "images": 0
+    },
+    "offsite_test-train": {
+      "patients": 0,
+      "images": 0
+    },
+    "offsite_test-val": {
+      "patients": 0,
+      "images": 0
+    },
+    "onsite_test-train": {
+      "patients": 0,
+      "images": 0
+    },
+    "onsite_test-val": {
+      "patients": 0,
+      "images": 0
+    },
+    "train-val": {
+      "patients": 0,
+      "images": 0
+    }
+  },
+  "manifest_sha256": "7a8c8e5b57f1ecde814694e27e7feb1a75ad6fc1de96cc4e1d1897cc8ae83b89"
+}
