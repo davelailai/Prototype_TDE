@@ -12,9 +12,19 @@
 
 set -eo pipefail
 
+export LANG=C
+export LC_ALL=C
+
 module load gcc/12.2
 module load cuda/12.4.1
-source activate mmcls
+CONDA_BASE=${CONDA_BASE:-/nobackup/projects/bdliv04/jxie/miniconda}
+if [[ ! -f "$CONDA_BASE/etc/profile.d/conda.sh" ]]; then
+    echo "Missing Conda initialization: $CONDA_BASE/etc/profile.d/conda.sh" >&2
+    echo "Set CONDA_BASE to the installation shown by conda info --base." >&2
+    exit 1
+fi
+source "$CONDA_BASE/etc/profile.d/conda.sh"
+conda activate "${CONDA_ENV:-mmcls}"
 set -u
 
 # Submit from the project root.

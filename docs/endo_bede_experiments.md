@@ -1,7 +1,11 @@
 # Endo patient-independent experiments on Bede
 
 The grouped sbatch script uses the established Bede setup: GCC 12.2, CUDA
-12.4.1 and `source activate mmcls`. It requests one node and one GPU without
+12.4.1 and the `mmcls` Conda environment. It explicitly sources
+`/nobackup/projects/bdliv04/jxie/miniconda/etc/profile.d/conda.sh` before activation.
+If Conda is installed elsewhere, export `CONDA_BASE=$(conda info --base)` before
+submitting. The script uses locale `C`, which does not require Chinese locale
+packages on compute nodes. It requests one node and one GPU without
 additional CPU or memory requirements.
 
 ## Prepare the experiment plan
