@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Environments
+.venv/
+venv/
+env/
+*.egg-info/
+
+# IDE / local files
+.vscode/
+.idea/
+.codex
+.agents/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Data and experiment artifacts
+data/
+work_dirs/
+work_dirs_*/
+
+# Checkpoints and generated outputs
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.pkl
+*.pickle
+last_checkpoint
+*.log
+*.json
+events.out.tfevents*
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+

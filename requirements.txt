@@ -1,0 +1,10 @@
+numpy
+scikit-learn
+matplotlib
+pandas
+pillow
+opencv-python
+tqdm
+scipy
+einops
+
