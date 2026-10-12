@@ -55,6 +55,29 @@ checkpoint for every model. Test predictions are evaluated only after training.
 
 ## Submit
 
+To use one array task per setting and sequentially run its five seeds, matching
+the previous submission style:
+
+```bash
+mkdir -p logs
+PLAN="$PWD/work_dirs/Endo_patient_disjoint_v2/plan.json"
+SETTINGS=$(bash scripts/endo_plan_bede.sbatch "$PLAN" count)
+sbatch --array="0-$((SETTINGS-1))%2" scripts/endo_plan_bede.sbatch "$PLAN"
+```
+
+Use the actual existing plan path (`v1` or `v2`). A default complete plan has
+42 settings, so its grouped array is `0-41%2`. Each job sequentially runs five
+training+test tasks. The count command also supports plans containing only
+selected experiment groups or different seed lists. Logs go to `logs/`.
+Completed tasks are skipped by the existing executor; a failed seed is recorded
+and the remaining seeds are attempted. The job exits nonzero if any seed fails.
+The two-day time limit applies to all five runs together.
+
+Do not submit both the grouped array above and the per-seed array below for
+the same plan. Inspect existing jobs before choosing one submission mode.
+
+### Alternative: one array task per seed
+
 Before submitting, inspect existing Endo jobs to avoid duplicating a suite
 already launched outside this tool:
 
