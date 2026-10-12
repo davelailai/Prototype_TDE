@@ -1,7 +1,8 @@
 # Endo patient-independent experiments on Bede
 
-Use your existing activated training environment. The Slurm array inherits it;
-the submission scripts do not install packages or change environments.
+The grouped sbatch script uses the established Bede setup: GCC 12.2, CUDA
+12.4.1 and `source activate mmcls`. It requests one node and one GPU without
+additional CPU or memory requirements.
 
 ## Prepare the experiment plan
 
@@ -62,13 +63,15 @@ the previous submission style:
 mkdir -p logs
 PLAN="$PWD/work_dirs/Endo_patient_disjoint_v2/plan.json"
 SETTINGS=$(bash scripts/endo_plan_bede.sbatch "$PLAN" count)
-sbatch --array="0-$((SETTINGS-1))%2" scripts/endo_plan_bede.sbatch "$PLAN"
+sbatch --array="0-$((SETTINGS-1))" scripts/endo_plan_bede.sbatch "$PLAN"
 ```
 
 Use the actual existing plan path (`v1` or `v2`). A default complete plan has
-42 settings, so its grouped array is `0-41%2`. Each job sequentially runs five
+42 settings, so its grouped array is `0-41`. Each job sequentially runs five
 training+test tasks. The count command also supports plans containing only
 selected experiment groups or different seed lists. Logs go to `logs/`.
+The grouped array has no explicit concurrency cap; Bede schedules all submitted
+settings according to available resources.
 Completed tasks are skipped by the existing executor; a failed seed is recorded
 and the remaining seeds are attempted. The job exits nonzero if any seed fails.
 The two-day time limit applies to all five runs together.

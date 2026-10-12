@@ -2,19 +2,22 @@
 #SBATCH --account=bdliv04
 #SBATCH --partition=gpu
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
 #SBATCH --time=2-00:00:00
 #SBATCH --job-name=Endo_plan
-#SBATCH --array=0-41%2
+#SBATCH --array=0-41
+#SBATCH --mail-type=FAIL
 #SBATCH --output=logs/Endo_plan_%A_%a.out
 #SBATCH --error=logs/Endo_plan_%A_%a.err
 
-set -euo pipefail
+set -eo pipefail
 
-# Submit from the project root with the existing training environment active.
+module load gcc/12.2
+module load cuda/12.4.1
+source activate mmcls
+set -u
+
+# Submit from the project root.
 PROJECT_ROOT=${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-$(pwd)}}
 cd "$PROJECT_ROOT"
 PLAN=$(realpath "${1:?Usage: sbatch scripts/endo_plan_bede.sbatch PLAN.json}")
@@ -79,7 +82,7 @@ for task_id in "${IDS[@]}"; do
     if [[ "$MODE" == dry-run ]]; then
         "$PYTHON_BIN" tools/Analysis/run_endo_task.py \
             --plan "$PLAN" --task-id "$task_id" --dry-run
-    elif srun --ntasks=1 "$PYTHON_BIN" -u tools/Analysis/run_endo_task.py \
+    elif "$PYTHON_BIN" -u tools/Analysis/run_endo_task.py \
         --plan "$PLAN" --task-id "$task_id"; then
         echo "SUCCESS: plan task $task_id"
     else
