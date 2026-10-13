@@ -10,4 +10,3 @@ model = dict(
         loss=dict(type='AsymmetricLoss', loss_weight=1.0, use_sigmoid=True)))),
 )
 model_wrapper_cfg = dict(type='MMDistributedDataParallel', find_unused_parameters=True)
-

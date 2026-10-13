@@ -24,4 +24,3 @@ test_evaluator = [
 ]
 default_hooks = dict(checkpoint=dict(
     save_best='multi-class/mAUC_multiclass', rule='greater'))
-

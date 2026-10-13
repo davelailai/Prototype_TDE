@@ -10,4 +10,3 @@ model = dict(
         inter_channels=512,
         loss=dict(type='AsymmetricLoss', loss_weight=1.0, use_sigmoid=True)))),
 )
-
