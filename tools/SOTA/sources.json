@@ -1,0 +1,7 @@
+{
+  "CIPL": {"url": "https://github.com/cwangrun/CIPL.git", "commit": "8583b74528b463982baec11c2866111cdbc2a410"},
+  "MLC-PAT": {"url": "https://github.com/xiemk/MLC-PAT.git", "commit": "4026970ae5b4bc1381c7e64c37c1af16fd1aca6a"},
+  "ProCI": {"url": "https://github.com/JustinLiam/ProCI.git", "commit": "e7effd1696a845fbeed563510025d3b4dba053e1"},
+  "BankCausal": {"url": "https://github.com/davelailai/BankCausal.git", "commit": "e3f8788f24410310db95d255e8e20507905e6518"},
+  "MICCAI2024": {"url": "https://github.com/davelailai/multi-disease-detection-guided-by-causal-estimation.git", "commit": "f4bf36ab8d3c0eee88d756668d953fe89bddb2e3"}
+}

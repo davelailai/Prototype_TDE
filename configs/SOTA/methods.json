@@ -1,0 +1,6 @@
+{
+  "MICCAI2024": {"epochs": 100, "lr": 0.1, "weight_decay": 0.0001, "ema": 0.0},
+  "MLC-PAT": {"epochs": 100, "lr": 0.0001, "weight_decay": 0.0001, "ema": 0.9997, "grid": 2},
+  "CIPL": {"epochs": 41, "lr": 0.003, "backbone_lr": 0.0001, "weight_decay": 0.0, "ema": 0.0, "warm_epochs": 15, "prototype_dim": 256, "prototypes_per_class": 50, "push_start": 35, "push_interval": 5, "last_epochs": 6},
+  "ProCI": {"epochs": 80, "lr": 0.0005, "weight_decay": 0.05, "ema": 0.9997, "sam_rho": 0.02, "scu_weight": 0.5, "causal_weight": 0.25, "causal_tau": 0.5, "proto_momentum": 0.99, "cap_per_class": 8, "blend_start": 10, "blend_end": 30}
+}

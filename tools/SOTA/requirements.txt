@@ -1,0 +1,4 @@
+timm==1.0.15
+# In addition to the existing mmcls project environment:
+# torch, torchvision, mmcv, mmengine, mmpretrain, Pillow, numpy, scikit-learn.
+# The two prior repositories may require their own optional dependencies.
