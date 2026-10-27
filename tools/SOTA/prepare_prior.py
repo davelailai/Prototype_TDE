@@ -11,7 +11,7 @@ from mmengine.config import Config
 
 from data import ANNOTATIONS, read_annotations, resolve_image
 from fetch_sources import verify
-from protocol import REFERENCE_ROOT, alignment_report, reference_protocol
+from protocol import REFERENCE_ROOT, alignment_report, reference_protocol, override_learning_rate
 
 
 def main():
@@ -25,6 +25,7 @@ def main():
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--batch-size', type=int)
     parser.add_argument('--workers', type=int, default=4)
+    parser.add_argument('--lr', type=float, help='Explicit base optimizer learning rate')
     parser.add_argument('--checkpoint')
     parser.add_argument('--protocol', choices=['aligned', 'native'], default='aligned')
     parser.add_argument('--reference-root', default=str(REFERENCE_ROOT))
@@ -33,6 +34,7 @@ def main():
     parser.add_argument('--test-ann')
     args = parser.parse_args()
     reference = reference_protocol(args.dataset, args.reference_root)
+    lr_settings = override_learning_rate({}, args.lr)
     args.batch_size = args.batch_size or reference['batch_size']
     args.checkpoint = args.checkpoint or reference['backbone']['init_cfg']['checkpoint']
     source = verify(args.source_root, args.method)
@@ -40,6 +42,8 @@ def main():
     # inheriting the old Endo split or an architecture different from Q2L-TDE.
     base = source/'configs/FFA/FFA_BankCausal.py'
     cfg = Config.fromfile(base)
+    if args.lr is not None:
+        cfg.optim_wrapper.optimizer.lr = lr_settings['lr']
     work = Path(args.work_dir).resolve()
     work.mkdir(parents=True, exist_ok=True)
     if (work/'resolved.py').exists():
@@ -85,6 +89,11 @@ def main():
     cfg.model.head['in_channels'] = 2048
     cfg.model.head['img_size'] = 448
     if args.protocol == 'aligned':
+        if args.lr is not None and args.lr != reference['optimizer']['lr']:
+            raise ValueError('Q2L-controlled optimization requires the reference LR')
+        cfg['optim_wrapper'] = copy.deepcopy(reference.get('optim_wrapper', dict(optimizer=reference['optimizer'])))
+        cfg['param_scheduler'] = copy.deepcopy(reference['scheduler'])
+        cfg['auto_scale_lr'] = dict(enable=False)
         cfg.model['backbone'] = copy.deepcopy(reference['backbone'])
         cfg.model.backbone.init_cfg.checkpoint = args.checkpoint
         cfg['data_preprocessor'] = copy.deepcopy(reference['normalization'])
@@ -105,7 +114,9 @@ def main():
     cfg['default_hooks']['checkpoint']['rule'] = 'greater'
     cfg['visualizer'] = dict(type='UniversalVisualizer', vis_backends=[dict(type='LocalVisBackend')])
     cfg['sota_alignment'] = alignment_report('BankCausal', args.protocol, reference,
-                                            dict(epochs=cfg.train_cfg.max_epochs), args.batch_size, 448)
+                                            dict(epochs=cfg.train_cfg.max_epochs, lr=cfg.optim_wrapper.optimizer.lr,
+                                                 optimization_recipe='q2l_sgd_v1' if args.protocol == 'aligned' else 'legacy_method_specific'),
+                                            args.batch_size, 448)
     cfg.dump(work/'resolved.py')
     script = Path(__file__).with_name('train_bankcausal.py').resolve()
     command = [sys.executable, str(script), str(work/'resolved.py'), '--source-root', str(Path(args.source_root).resolve())]

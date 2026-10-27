@@ -6,6 +6,7 @@ import sys
 import types
 from pathlib import Path
 
+import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -38,11 +39,26 @@ class ResSpatial(nn.Module):
 
 class PAT(nn.Module):
     """PAT-T, cross attention: three classifiers plus patch-wise logit attention."""
-    def __init__(self, backbone, channels, classes):
+    def __init__(self, backbone, channels, classes, memory_checkpointing=False):
         super().__init__()
         self.backbone = backbone
         self.heads = nn.ModuleList([nn.Linear(channels, classes) for _ in range(3)])
         self.classification_loss = asymmetric_loss
+        self.memory_checkpointing = memory_checkpointing
+
+    def backward_loss(self, loss):
+        # Checkpointed ResNet blocks recompute BN during backward. Keep only the
+        # single original forward's running-stat updates, including its counter.
+        states = [(module, {name: value.detach().clone() for name, value in module.named_buffers(recurse=False)})
+                  for module in self.backbone.modules()
+                  if isinstance(module, nn.modules.batchnorm._BatchNorm)] if self.memory_checkpointing else []
+        try:
+            loss.backward()
+        finally:
+            with torch.no_grad():
+                for module, buffers in states:
+                    for name, value in buffers.items():
+                        getattr(module, name).copy_(value)
 
     def logits(self, images):
         batch = images[0].shape[0]
@@ -131,7 +147,6 @@ class CIPL(nn.Module):
         self.core = load_cipl(source)(features=backbone, img_size=size, prototype_shape=shape,
                                      proto_layer_rf_info=None, num_classes=classes+1,
                                      add_on_layers_type='bottleneck')
-        self.core._init_ema_params()
         self.core.last_layer.requires_grad_(False)
 
     def get_extra_state(self):
@@ -157,26 +172,38 @@ class CIPL(nn.Module):
 
     def loss(self, images, labels, epoch, step=0, last_only=False):
         labels = append_normal(labels)
-        labels = torch.cat([labels[:, 0], labels[:, 1]])
-        warm = epoch < self.settings['warm_epochs'] or last_only
+        paired = labels.ndim == 3
+        if paired:
+            labels = torch.cat([labels[:, 0], labels[:, 1]])
+        warm = epoch < self.settings['warm_epochs']
         if warm:
-            logits, distances, _ = self.core.forward_infer(torch.cat(images[:2]))
+            warm_images = torch.cat(images[:2]) if paired else images
+            logits, distances, _ = self.core.forward_infer(warm_images)
         else:
+            if not paired:
+                raise ValueError('CIPL joint/refinement stages require shared-class image pairs')
             logits, distances, co_logits, maps, teacher_maps, teacher_logits = self.core(images[:2], images[2:])
         cluster, separation = self.cluster_separation(distances, labels)
-        loss = paired_ce(logits, labels) + .02*cluster + .02*F.relu(2-separation)
+        classification = paired_ce(logits, labels)
+        separation_hinge = F.relu(2-separation)
+        loss = classification + .02*cluster + .02*separation_hinge
+        components = dict(classification=classification, cluster=cluster, separation_hinge=separation_hinge)
         if not warm:
             pair = labels.chunk(2)
             intersection = torch.cat([pair[0]*pair[1]]*2)
-            loss = loss + .5*paired_ce(co_logits, intersection)
+            components['cross_image'] = paired_ce(co_logits, intersection)
+            loss = loss + .5*components['cross_image']
             student = torch.stack([logits[:, -1:].expand_as(logits[:, :-1]), logits[:, :-1]], -1).softmax(-1)
             teacher = torch.stack([teacher_logits[:, -1:].expand_as(teacher_logits[:, :-1]),
                                    teacher_logits[:, :-1]], -1).softmax(-1).detach()
             gram_s = torch.einsum('bkc,dkc->kbd', student, student)
             gram_t = torch.einsum('bkc,dkc->kbd', teacher, teacher)
-            loss = loss + 10*F.mse_loss(gram_s, gram_t)
+            components['prediction_alignment'] = F.mse_loss(gram_s, gram_t)
+            loss = loss + 10*components['prediction_alignment']
             similarity = (F.normalize(maps, dim=1)*F.normalize(teacher_maps.detach(), dim=1)).sum(1)
-            loss = loss + .5*(1-similarity).sum((1, 2)).mean()
+            components['map_alignment'] = (1-similarity).sum((1, 2)).mean()
+            loss = loss + .5*components['map_alignment']
+        self.last_loss_components = {name: value.detach() for name, value in components.items()}
         return loss
 
     @torch.no_grad()
@@ -186,28 +213,45 @@ class CIPL(nn.Module):
 
     @torch.no_grad()
     def push(self, loader, device):
-        """Nearest training-patch projection, with class membership constraints."""
+        """Official greedy projection: class-eligible patches from distinct images."""
         self.eval()
         prototypes = self.core.prototype_vectors
-        nearest = torch.full((len(prototypes),), float('inf'), device=device)
-        patches = prototypes.clone()
         identity = self.core.prototype_class_identity.to(device)
-        for images, labels, _ in loader:
+        distances_by_image, positions_by_image, identifiers = [], [], []
+        for images, labels, indices in loader:
             features, _ = self.core.conv_features(images.to(device))
             distances = self.core._l2_convolution(features, prototypes)
             labels = append_normal(labels.to(device))
             allowed = (labels @ identity.t()).bool()
-            distances = distances.masked_fill(~allowed[:, :, None, None], float('inf'))
-            flat = distances.permute(1, 0, 2, 3).flatten(1)
-            best, location = flat.min(1)
-            changed = best < nearest
-            spatial = features.shape[2]*features.shape[3]
-            b = location // spatial
-            h = (location % spatial) // features.shape[3]
-            w = location % features.shape[3]
-            patches[changed, :, 0, 0] = features[b[changed], :, h[changed], w[changed]]
-            nearest = torch.minimum(nearest, best)
-        prototypes.copy_(patches)
+            best, location = distances.flatten(2).min(2)
+            distances_by_image.append(best.masked_fill(~allowed, float('inf')).cpu().numpy())
+            positions_by_image.append(location.cpu().numpy())
+            identifiers.extend(torch.as_tensor(indices).tolist())
+        distances_by_image = np.concatenate(distances_by_image)
+        positions_by_image = np.concatenate(positions_by_image)
+        if len(set(identifiers)) != len(identifiers):
+            raise ValueError('CIPL projection requires a non-repeated, non-shuffled training search set')
+        selected, used = {}, set()
+        for j in range(len(prototypes)):
+            for row in np.argsort(distances_by_image[:, j], kind='stable'):
+                if not np.isfinite(distances_by_image[row, j]):
+                    break
+                index = identifiers[row]
+                if index not in used:
+                    selected[index] = (j, int(positions_by_image[row, j]))
+                    used.add(index)
+                    break
+        # Re-extract only chosen images to avoid caching every image's feature map.
+        for images, _, indices in loader:
+            chosen = [(b, selected[int(index)]) for b, index in enumerate(indices) if int(index) in selected]
+            if not chosen:
+                continue
+            features, _ = self.core.conv_features(images[[b for b, _ in chosen]].to(device))
+            for b, (_, (j, location)) in enumerate(chosen):
+                h, w = divmod(location, features.shape[3])
+                prototypes[j, :, 0, 0].copy_(features[b, :, h, w])
+        return dict(projected=len(selected), total=len(prototypes),
+                    image_to_prototype={str(index): j for index, (j, _) in selected.items()})
 
 
 def load_proci(source):
@@ -293,9 +337,12 @@ class ProCI(nn.Module):
 
 def make_model(method, classes, source_root, settings, size, checkpoint, backbone=None, channels=2048,
                classification_loss=None, backbone_config=None):
+    if method == 'MLC-PAT' and settings.get('activation_checkpointing', False):
+        backbone_config = copy.deepcopy(backbone_config or dict(type='ResNet', depth=50, out_indices=(3,)))
+        backbone_config['with_cp'] = True
     backbone = backbone if backbone is not None else ResSpatial(checkpoint, backbone_config)
     if method == 'MLC-PAT':
-        model = PAT(backbone, channels, len(classes))
+        model = PAT(backbone, channels, len(classes), memory_checkpointing=settings.get('activation_checkpointing', False))
     elif method == 'CIPL':
         model = CIPL(backbone, len(classes), Path(source_root)/method, settings, size)
     elif method == 'ProCI':

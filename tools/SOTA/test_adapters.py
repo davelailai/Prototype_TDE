@@ -99,6 +99,31 @@ class HelpersTest(unittest.TestCase):
 
 @unittest.skipUnless((SOURCE/'CIPL/model.py').exists(), 'Fetch official CIPL source')
 class CIPLTest(unittest.TestCase):
+    def test_teacher_initializes_after_warmup(self):
+        settings = dict(SETTINGS['CIPL'], prototype_dim=4, prototypes_per_class=2, warm_epochs=1)
+        model = CIPL(ResToy(), 3, SOURCE/'CIPL', settings, 32)
+        self.assertFalse(model.core._ema_param_initialized)
+        image = torch.randn(2, 3, 4, 4)
+        labels = torch.tensor([[1., 0., 0.], [0., 1., 0.]])
+        model.loss(image, labels, 0).backward()
+        self.assertFalse(model.core._ema_param_initialized)
+        with torch.no_grad():
+            model.core.features.conv.weight.add_(.5)
+        expected = model.core.features.conv.weight.detach().clone()
+        views = [image.clone() for _ in range(4)]
+        model.loss(views, torch.stack([labels, labels], dim=1), 1)
+        self.assertTrue(model.core._ema_param_initialized)
+        torch.testing.assert_close(model.core.features_ema.conv.weight, expected)
+
+    def test_refinement_retains_teacher_branch(self):
+        settings = dict(SETTINGS['CIPL'], prototype_dim=4, prototypes_per_class=2, warm_epochs=1)
+        model = CIPL(ResToy(), 3, SOURCE/'CIPL', settings, 32)
+        views = [torch.randn(2, 3, 4, 4) for _ in range(4)]
+        labels = torch.tensor([[[1., 0., 0.], [1., 0., 0.]], [[0., 1., 0.], [0., 1., 0.]]])
+        loss = model.loss(views, labels, 1, last_only=True)
+        self.assertTrue(model.core._ema_param_initialized)
+        self.assertTrue(torch.isfinite(loss))
+
     def test_joint_warm_and_checkpoint(self):
         settings = dict(SETTINGS['CIPL'], prototype_dim=4, prototypes_per_class=2)
         model = CIPL(ResToy(), 3, SOURCE/'CIPL', settings, 32)
@@ -127,7 +152,9 @@ class CIPLTest(unittest.TestCase):
         model = CIPL(ResToy(), 3, SOURCE/'CIPL', settings, 32)
         old = model.core.prototype_vectors.detach().clone()
         batch = [(torch.randn(2, 3, 4, 4), torch.tensor([[1., 0., 0.]]*2), torch.arange(2))]
-        model.push(batch, torch.device('cpu'))
+        projection = model.push(batch, torch.device('cpu'))
+        self.assertEqual(projection['projected'], 2)
+        self.assertEqual(len(projection['image_to_prototype']), 2)
         self.assertFalse(torch.equal(old[:2], model.core.prototype_vectors[:2]))
         torch.testing.assert_close(old[2:], model.core.prototype_vectors[2:])
 

@@ -3,6 +3,7 @@ import copy
 import hashlib
 import importlib.util
 import inspect
+import math
 import os
 from pathlib import Path
 
@@ -54,6 +55,7 @@ def reference_protocol(dataset, root=REFERENCE_ROOT):
                 max_epochs=cfg.train_cfg.max_epochs,
                 batch_size=cfg.train_dataloader.batch_size,
                 optimizer=copy.deepcopy(dict(cfg.optim_wrapper.optimizer)),
+                optim_wrapper=copy.deepcopy(dict(cfg.optim_wrapper)),
                 scheduler=copy.deepcopy(cfg.param_scheduler),
                 normalization=copy.deepcopy(dict(cfg.data_preprocessor)),
                 train_view=copy.deepcopy(cfg.view_pipeline1),
@@ -81,6 +83,41 @@ def configure_method(method, settings, reference, mode):
     if mode == 'aligned' and method != 'CIPL':
         settings['epochs'] = reference['max_epochs']
     return settings
+
+
+def override_learning_rate(settings, lr):
+    """Explicit uniform base LR, without changing historical evaluation defaults."""
+    settings = copy.deepcopy(settings)
+    if lr is None:
+        return settings
+    if not math.isfinite(lr) or lr <= 0:
+        raise ValueError('Learning rate must be finite and positive')
+    settings['lr'] = lr
+    if 'backbone_lr' in settings:
+        settings['backbone_lr'] = lr
+    if 'last_epochs' in settings:
+        settings['last_lr'] = lr
+    return settings
+
+
+def reference_optimization(parameters, reference):
+    """Use MMEngine's actual scheduler implementations and epoch-step semantics."""
+    from mmengine.optim import LinearLR, CosineAnnealingLR
+    wrapper = reference.get('optim_wrapper', {})
+    if wrapper.get('type', 'OptimWrapper') != 'OptimWrapper' or set(wrapper)-{'type', 'optimizer'}:
+        raise ValueError('Audit reference optimizer-wrapper options before using standalone training')
+    config = copy.deepcopy(reference['optimizer'])
+    if config.pop('type') != 'SGD':
+        raise ValueError('Controlled optimization currently supports the reference SGD only')
+    optimizer = torch.optim.SGD(parameters, **config)
+    supported = dict(LinearLR=LinearLR, CosineAnnealingLR=CosineAnnealingLR)
+    schedulers = []
+    for entry in copy.deepcopy(reference['scheduler']):
+        name = entry.pop('type')
+        if name not in supported or not entry.get('by_epoch', True):
+            raise ValueError('Audit unsupported or iteration-based reference scheduler before using it')
+        schedulers.append(supported[name](optimizer, **entry))
+    return optimizer, schedulers
 
 
 def audit_backbone(backbone, checkpoint, prefix='backbone'):
@@ -118,6 +155,15 @@ def alignment_report(method, mode, reference, settings, batch_size, image_size, 
                 pretrained=not scratch,
                 exceptions=(['CIPL paired CE and staged training retained; finetuning adds dataset passes']
                             if method == 'CIPL' else []),
-                optimizer_policy='method-specific; not claimed identical to Q2L-TDE',
+                optimizer_policy=('reference optimizer and MMEngine epoch schedulers'
+                                  if settings.get('optimization_recipe') == 'q2l_sgd_v1'
+                                  else 'method-specific; not claimed identical to Q2L-TDE'),
+                optimization_recipe=settings.get('optimization_recipe', 'legacy_method_specific'),
+                resolved_optimizer=(copy.deepcopy(reference['optimizer'])
+                                    if settings.get('optimization_recipe') == 'q2l_sgd_v1' else None),
+                resolved_scheduler=(copy.deepcopy(reference['scheduler'])
+                                    if settings.get('optimization_recipe') == 'q2l_sgd_v1' else None),
+                base_learning_rate=settings.get('lr'),
+                learning_rate_groups={key: settings[key] for key in ('lr', 'backbone_lr', 'last_lr') if key in settings},
                 auxiliary_policy='method-specific mechanisms and weights retained; see README',
                 compute_policy='equal epochs do not imply equal FLOPs/views/optimizer steps')

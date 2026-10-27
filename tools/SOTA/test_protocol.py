@@ -9,7 +9,7 @@ from torch import nn
 
 from common import asymmetric_loss
 from protocol import (ReferenceLoss, alignment_report, audit_backbone, configure_method,
-                      reference_loss_class, reference_protocol)
+                      reference_loss_class, reference_protocol, override_learning_rate)
 from data import ReferenceView
 from PIL import Image
 
@@ -17,6 +17,19 @@ torch.set_num_threads(2)
 
 
 class ProtocolTest(unittest.TestCase):
+    def test_uniform_learning_rate(self):
+        original = dict(lr=.003, backbone_lr=.0001, last_epochs=6)
+        updated = override_learning_rate(original, .005)
+        self.assertEqual(updated['lr'], .005)
+        self.assertEqual(updated['backbone_lr'], .005)
+        self.assertEqual(updated['last_lr'], .005)
+        self.assertEqual(original, dict(lr=.003, backbone_lr=.0001, last_epochs=6))
+        self.assertEqual(override_learning_rate(original, None), original)
+        self.assertEqual(override_learning_rate(dict(lr=.1), .005), dict(lr=.005))
+        for invalid in [0, -.1, float('nan'), float('inf')]:
+            with self.assertRaises(ValueError):
+                override_learning_rate(original, invalid)
+
     def test_reference_configs(self):
         for dataset in ('FFA', 'Endo', 'ODIR'):
             p = reference_protocol(dataset)

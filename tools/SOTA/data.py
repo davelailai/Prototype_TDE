@@ -72,10 +72,17 @@ class ReferenceView:
 
 
 class Images(Dataset):
-    def __init__(self, annotation, image_root, size=448, train=False, method='ProCI', grid=2, reference=None):
+    def __init__(self, annotation, image_root, size=448, train=False, method='ProCI', grid=2, reference=None,
+                 cipl_pairing=True):
         self.classes, self.rows = read_annotations(annotation)
         self.paths = [str(resolve_image(r['img_path'], image_root)) for r in self.rows]
         self.method, self.train, self.grid, self.size = method, train, grid, size
+        self.cipl_pairing = cipl_pairing
+        if method == 'CIPL' and train and cipl_pairing:
+            labels = np.asarray([row['gt_score'] for row in self.rows])
+            self.cipl_labels = np.concatenate([labels, (labels.sum(1, keepdims=True) == 0)], axis=1)
+            self.cipl_members = [np.flatnonzero(self.cipl_labels[:, k]).tolist()
+                                 for k in range(self.cipl_labels.shape[1])]
         normalize = T.Normalize([.48145466, .4578275, .40821073], [.26862954, .26130258, .27577711])
         self.to_tensor = T.Compose([T.ToTensor(), normalize])
         self.geometry = T.Compose([
@@ -115,12 +122,13 @@ class Images(Dataset):
                     patch = patch.resize((self.size, self.size), Image.Resampling.BILINEAR)
                     views.append(self.to_tensor(self.augment(patch) if self.train else patch))
             return views, label, index
-        if self.method == 'CIPL' and self.train:
-            # Pair only with training images; teacher/student share spatial geometry.
-            other = random.randrange(len(self))
+        if self.method == 'CIPL' and self.train and self.cipl_pairing:
+            # Official sampling: choose an anchor-positive class, then a member of that class.
+            shared_class = random.choice(np.flatnonzero(self.cipl_labels[index]).tolist())
+            other = random.choice(self.cipl_members[shared_class])
             second = self.geometry(self._image(other))
             labels = torch.tensor(self.rows[other]['gt_score'], dtype=torch.float32)
-            views = [self.to_tensor(image), self.to_tensor(second),
+            views = [self.to_tensor(self.augment(image.copy())), self.to_tensor(self.augment(second.copy())),
                      self.to_tensor(self.augment(image.copy())), self.to_tensor(self.augment(second.copy()))]
             return views, torch.stack([label, labels]), index
         return self.to_tensor(self.augment(image) if self.train else image), label, index

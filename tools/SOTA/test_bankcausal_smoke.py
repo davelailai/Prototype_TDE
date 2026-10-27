@@ -74,6 +74,14 @@ def main():
         # Changing inference branches at test time must fail this assertion.
         assert abs(checkpoint['message_hub']['runtime_info']['best_score'] - result['mAUC']) < 1e-6
         assert len(pickle.loads((work/'pred_results.pkl').read_bytes())) == 4
+        cfg.work_dir = str(root/'evaluation')
+        cfg.dump(work/'evaluation.py')
+        subprocess.run([sys.executable, '-B', str(here/'train_bankcausal.py'), str(work/'evaluation.py'),
+                        '--source-root', source, '--eval', str(next(work.glob('best_*.pth')))], check=True,
+                       env=dict(os.environ, CUDA_VISIBLE_DEVICES='', OMP_NUM_THREADS='2', MKL_NUM_THREADS='2',
+                                MPLCONFIGDIR='/tmp/sota-mpl'))
+        evaluated = json.loads((root/'evaluation/test_metrics.json').read_text())
+        assert abs(evaluated['mAUC'] - result['mAUC']) < 1e-6
         print('BankCausal complete training smoke passed')
 
 

@@ -72,9 +72,11 @@ def main():
     parser.add_argument('config')
     parser.add_argument('--source-root', default='third_party/sota')
     parser.add_argument('--check', action='store_true', help='Build model/runner, but do not train')
+    parser.add_argument('--eval', metavar='CHECKPOINT', help='Test a validation-selected checkpoint without training')
     args = parser.parse_args()
     source = verify(args.source_root, 'BankCausal')
     config = Path(args.config).resolve()
+    checkpoint = str(Path(args.eval).resolve()) if args.eval else None
     sys.path.insert(0, str(source))
     os.chdir(source)
     from mmpretrain.utils import register_all_modules
@@ -108,9 +110,16 @@ def main():
     cfg['test_cfg'] = dict(type='TestLoop')
     cfg.setdefault('custom_hooks', []).append(dict(type='SOTABankStateHook', priority='LOW'))
     cfg.default_hooks.checkpoint.save_best = 'SOTA/mAUC'
+    if checkpoint:
+        # TestLoop initializes the EMA hook before loading cfg.load_from.
+        cfg.load_from = checkpoint
+        cfg.resume = False
     runner = Runner.from_cfg(cfg)
     if args.check:
         print('BankCausal model and runner built; training not started')
+        return
+    if checkpoint:
+        runner.test()
         return
     runner.train()
     best = next((hook.best_ckpt_path for hook in runner.hooks if getattr(hook, 'best_ckpt_path', None)), None)

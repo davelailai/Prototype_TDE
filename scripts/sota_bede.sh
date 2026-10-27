@@ -24,14 +24,17 @@ method=${methods[$((task / 3))]}
 dataset=${datasets[$((task % 3))]}
 image_root=${IMAGE_ROOT:-/nobackup/projects/bdliv04/jxie/SCIF/data}
 protocol=${SOTA_PROTOCOL:-aligned}
-base_work=${SOTA_WORK_ROOT:-work_dirs/SOTA_${protocol}}
+learning_rate=${SOTA_LR:-0.005}
+batch_size=${BATCH_SIZE:-32}
+base_work=${SOTA_WORK_ROOT:-work_dirs/SOTA_${protocol}_v2_lr${learning_rate}}
+echo "method=${method} dataset=${dataset} base_lr=${learning_rate} batch=${batch_size} output=${base_work}"
 status=0
 for seed in 0 1 2 3 4; do
   if [ "${method}" = BankCausal ]; then
     work="${base_work}/${dataset}/${method}/seed${seed}"
     if "${PYTHON}" -B tools/SOTA/prepare_prior.py \
       --dataset "${dataset}" --image-root "${image_root}" --seed "${seed}" \
-      --protocol "${protocol}" --batch-size "${BATCH_SIZE:-32}" --work-dir "${work}"; then
+      --protocol "${protocol}" --lr "${learning_rate}" --batch-size "${batch_size}" --work-dir "${work}"; then
       if ! "${PYTHON}" -B tools/SOTA/train_bankcausal.py "${work}/resolved.py"; then
         status=1
       fi
@@ -40,13 +43,20 @@ for seed in 0 1 2 3 4; do
     fi
     continue
   fi
-  if ! "${PYTHON}" -B tools/SOTA/train.py \
+  if "${PYTHON}" -B tools/SOTA/train.py \
     --method "${method}" --dataset "${dataset}" \
     --image-root "${image_root}" --seed "${seed}" \
-    --protocol "${protocol}" --batch-size "${BATCH_SIZE:-32}" \
+    --protocol "${protocol}" --lr "${learning_rate}" --batch-size "${batch_size}" \
     --work-dir "${base_work}/${dataset}/${method}/seed${seed}"; then
+    echo "SUCCESS ${method} ${dataset} seed=${seed}"
+  else
+    code=$?
     echo "FAILED ${method} ${dataset} seed=${seed}" >&2
     status=1
+    if [ "${code}" -eq 42 ]; then
+      echo "Stopping remaining seeds after CUDA OOM; adjust the declared comparison batch." >&2
+      break
+    fi
   fi
 done
 exit "${status}"

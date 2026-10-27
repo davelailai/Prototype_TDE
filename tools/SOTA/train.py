@@ -7,6 +7,7 @@ import json
 import os
 import pickle
 import random
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -17,7 +18,7 @@ from adapters import make_model
 from common import metrics
 from data import ANNOTATIONS, Images
 from fetch_sources import verify
-from protocol import REFERENCE_ROOT, ReferenceLoss, alignment_report, configure_method, reference_protocol
+from protocol import REFERENCE_ROOT, ReferenceLoss, alignment_report, configure_method, reference_protocol, override_learning_rate, reference_optimization
 
 PROJECT = Path(__file__).resolve().parents[2]
 SWAV = ('https://download.openmmlab.com/mmselfsup/1.x/swav/'
@@ -75,6 +76,7 @@ def parse_args():
     parser.add_argument('--workers', type=int, default=4)
     parser.add_argument('--image-size', type=int, default=448)
     parser.add_argument('--epochs', type=int)
+    parser.add_argument('--lr', type=float, help='Override base LR for every parameter group, including CIPL refinement')
     parser.add_argument('--checkpoint', help='Default: reference backbone checkpoint')
     parser.add_argument('--protocol', choices=['aligned', 'native'], default='aligned')
     parser.add_argument('--reference-root', default=str(REFERENCE_ROOT))
@@ -102,6 +104,19 @@ def main():
     device = torch.device(args.device)
     verify(args.source_root, args.method)
     settings = configure_method(args.method, json.loads(Path(args.settings).read_text())[args.method], reference, args.protocol)
+    settings = override_learning_rate(settings, args.lr)
+    if args.protocol == 'aligned' and args.method in ('MICCAI2024', 'MLC-PAT') and not args.eval:
+        if args.lr is not None and args.lr != reference['optimizer']['lr']:
+            raise ValueError('Q2L-controlled optimization requires the reference LR; do not silently change it')
+        settings['lr'] = reference['optimizer']['lr']
+        settings['weight_decay'] = reference['optimizer'].get('weight_decay', 0.)
+        settings['optimization_recipe'] = 'q2l_sgd_v1'
+        if args.method == 'MLC-PAT':
+            settings.setdefault('activation_checkpointing', True)
+    if args.method == 'CIPL' and not args.eval:
+        if args.protocol == 'aligned' and args.lr is None:
+            settings = override_learning_rate(settings, reference['optimizer']['lr'])
+        settings['cipl_recipe'] = 'official_mechanisms_v2'
     epochs = args.epochs if args.epochs is not None else settings['epochs']
     if epochs < 1:
         raise ValueError('epochs must be positive')
@@ -132,6 +147,13 @@ def main():
                               generator=generator, drop_last=True)
     if not len(train_loader):
         raise ValueError('Training data smaller than batch size')
+    warm_loader = None
+    if args.method == 'CIPL':
+        warm_data = Images(annotation[0], args.image_root, args.image_size, train=True, method='CIPL',
+                           reference=reference if args.protocol == 'aligned' else None, cipl_pairing=False)
+        warm_loader = DataLoader(warm_data, batch_size=args.batch_size, shuffle=True,
+                                 num_workers=args.workers, worker_init_fn=seed_worker,
+                                 generator=torch.Generator().manual_seed(args.seed), drop_last=True)
     val_loader, test_loader = [DataLoader(ds, batch_size=args.batch_size, num_workers=args.workers)
                                for ds in datasets[1:]]
     model = make_model(args.method, classes, args.source_root, settings, args.image_size,
@@ -140,11 +162,15 @@ def main():
                                             else None),
                        backbone_config=reference['backbone'] if args.protocol == 'aligned' else None).to(device)
     ema = copy.deepcopy(model).requires_grad_(False) if settings['ema'] else None
-    if args.method == 'CIPL':
+    reference_schedulers = []
+    if settings.get('optimization_recipe') == 'q2l_sgd_v1':
+        optimizer, reference_schedulers = reference_optimization(model.parameters(), reference)
+    elif args.method == 'CIPL':
         core = model.core
         optimizer = torch.optim.Adam([
             dict(params=core.features.parameters(), lr=settings['backbone_lr']),
             dict(params=core.add_on_layers.parameters()), dict(params=[core.prototype_vectors])], lr=settings['lr'])
+        last_optimizer = torch.optim.Adam(core.last_layer.parameters(), lr=settings.get('last_lr', 1e-4))
     elif args.method == 'MICCAI2024':
         optimizer = torch.optim.SGD(model.parameters(), lr=settings['lr'], momentum=.9, weight_decay=settings['weight_decay'])
     elif args.method == 'ProCI':
@@ -157,7 +183,7 @@ def main():
     else:
         optimizer = torch.optim.AdamW(model.parameters(), lr=settings['lr'], weight_decay=settings['weight_decay'])
     scheduler = None
-    if args.method == 'MLC-PAT':
+    if args.method == 'MLC-PAT' and not reference_schedulers:
         scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=settings['lr'],
                                                         epochs=epochs, steps_per_epoch=len(train_loader), pct_start=.2)
     record = dict(vars(args), classes=classes, settings=settings, annotations=[str(p) for p in annotation],
@@ -178,6 +204,8 @@ def main():
         for name, candidate in [('student', model)] + ([('ema', ema)] if ema is not None else []):
             target, score, _ = evaluate(candidate, val_loader, device)
             result = dict(epoch=epoch, stage=stage, weights=name, **metrics(target, score))
+            if args.method == 'CIPL':
+                result['cipl_phase'] = 'warmup' if epoch < settings['warm_epochs'] else stage
             with (work/'history.jsonl').open('a') as handle:
                 handle.write(json.dumps(result)+'\n')
             print(json.dumps(result), flush=True)
@@ -190,7 +218,9 @@ def main():
     if not args.eval:
         for epoch in range(epochs):
             model.train()
-            if args.method == 'CIPL' and epoch in (10, 20, 25, 30, 35):
+            if reference_schedulers:
+                print(json.dumps(dict(epoch=epoch, learning_rates=[g['lr'] for g in optimizer.param_groups])), flush=True)
+            elif args.method == 'CIPL' and epoch in (10, 20, 25, 30, 35):
                 for group in optimizer.param_groups:
                     group['lr'] *= .5
             elif args.method == 'ProCI':
@@ -201,7 +231,8 @@ def main():
                 lr = settings['lr'] * min(1., (epoch+1)/5) * .5*(1+np.cos(np.pi*epoch/epochs))
                 for group in optimizer.param_groups:
                     group['lr'] = float(lr)
-            for step, (images, labels, _) in enumerate(train_loader):
+            epoch_loader = warm_loader if args.method == 'CIPL' and epoch < settings['warm_epochs'] else train_loader
+            for step, (images, labels, _) in enumerate(epoch_loader):
                 if args.max_train_batches is not None and step >= args.max_train_batches:
                     break
                 optimizer.zero_grad(set_to_none=True)
@@ -219,7 +250,10 @@ def main():
                 loss = model.loss(images, labels, epoch, step)
                 if not torch.isfinite(loss):
                     raise FloatingPointError(f'Non-finite loss at epoch={epoch}, step={step}')
-                loss.backward()
+                if args.method == 'MLC-PAT':
+                    model.backward_loss(loss)
+                else:
+                    loss.backward()
                 if args.method == 'ProCI':
                     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.)
                 if args.method == 'ProCI':
@@ -238,18 +272,24 @@ def main():
                 if ema is not None:
                     update_ema(ema, model, settings['ema'])
                 if step % 20 == 0:
-                    print(f'epoch={epoch} step={step}/{len(train_loader)} loss={loss.item():.6f}', flush=True)
+                    print(f'epoch={epoch} step={step}/{len(epoch_loader)} loss={loss.item():.6f}', flush=True)
+                    if args.method == 'CIPL':
+                        print(json.dumps(dict(epoch=epoch, step=step,
+                            cipl_loss_components={k: float(v) for k, v in model.last_loss_components.items()},
+                            teacher_initialized=model.core._ema_param_initialized)), flush=True)
+            for reference_scheduler in reference_schedulers:
+                reference_scheduler.step()
             consider(epoch, 'joint')
             if args.method == 'CIPL' and epoch >= settings['push_start'] and epoch % settings['push_interval'] == 0:
                 push_data = Images(annotation[0], args.image_root, args.image_size, method='ProCI',
                                    reference=reference if args.protocol == 'aligned' else None)
-                model.push(DataLoader(push_data, batch_size=args.batch_size, num_workers=args.workers), device)
+                projection = model.push(DataLoader(push_data, batch_size=args.batch_size, num_workers=args.workers), device)
+                (work/f'projection_epoch{epoch}.json').write_text(json.dumps(projection, indent=2))
                 consider(epoch, 'push')
                 model.core.features.requires_grad_(False)
                 model.core.add_on_layers.requires_grad_(False)
                 model.core.prototype_vectors.requires_grad_(False)
                 model.core.last_layer.requires_grad_(True)
-                last_optimizer = torch.optim.Adam(model.core.last_layer.parameters(), lr=1e-4)
                 for last in range(settings['last_epochs']):
                     model.train()
                     for images, labels, _ in train_loader:
@@ -282,4 +322,12 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except torch.cuda.OutOfMemoryError as error:
+        print(f'CUDA out of memory: {error}', file=sys.stderr)
+        print('Batch size was NOT silently reduced. PAT uses five views per image; '
+              'new aligned runs enable activation checkpointing. If needed, declare a '
+              'smaller common physical batch for the comparison, including Q2L/Q2L-TDE.',
+              file=sys.stderr)
+        raise SystemExit(42)
