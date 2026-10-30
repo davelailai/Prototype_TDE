@@ -31,15 +31,15 @@ BASE_WORK_DIR=${ENDO_COMPONENT_ROOT:-work_dirs/Endo_patient_disjoint_direct/Comp
 ANN_DIR=${ENDO_ANN_DIR:-data/Endo/Endo/patient_disjoint_balanced_seed42}
 IMAGE_ROOT=${IMAGE_ROOT:-/nobackup/projects/bdliv04/jxie/SCIF/data}
 
-# all_loss is exactly the completed margin=0.5, lambda_pos=lambda_neg=1,
+# all_loss is the selected margin=0.5, lambda_pos=0.8, lambda_neg=1.0,
 # orthogonality_weight=0.1 experiment. Reuse it without retraining.
 mkdir -p "$BASE_WORK_DIR"
 if [[ ! -e "$BASE_WORK_DIR/all_loss" ]]; then
-    ln -s ../Margin_Ablation/margin0.5 "$BASE_WORK_DIR/all_loss"
+    ln -s ../Lambda_Ablation_margin0.5/lpos0.8_lneg1.0 "$BASE_WORK_DIR/all_loss"
 fi
 
 variants=(baseline only_lpos only_lneg only_ortho no_lpos no_lneg no_ortho)
-lambda_pos=(0.0 1.0 0.0 0.0 0.0 1.0 1.0)
+lambda_pos=(0.0 0.8 0.0 0.0 0.0 0.8 0.8)
 lambda_neg=(0.0 0.0 1.0 0.0 1.0 0.0 1.0)
 ortho=(0.0 0.0 0.0 0.1 0.1 0.1 0.0)
 
