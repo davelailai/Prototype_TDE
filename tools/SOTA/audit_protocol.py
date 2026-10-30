@@ -25,7 +25,8 @@ def main():
         reports[dataset] = {}
         for method in [*methods, 'BankCausal']:
             settings = configure_method(method, methods.get(method, dict(epochs=100)), reference, args.protocol)
-            settings = override_learning_rate(settings, args.lr)
+            if method != 'CIPL':
+                settings = override_learning_rate(settings, args.lr)
             if args.protocol == 'aligned' and method in ('MICCAI2024', 'MLC-PAT', 'BankCausal'):
                 if args.lr != reference['optimizer']['lr']:
                     parser.error('Controlled recipe requires the reference LR')

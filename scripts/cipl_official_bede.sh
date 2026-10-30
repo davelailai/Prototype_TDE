@@ -22,10 +22,10 @@ if (( task < 0 || task >= ${#datasets[@]} )); then
   exit 2
 fi
 dataset=${datasets[$task]}
-lr=${SOTA_LR:-0.005}
-base=${SOTA_WORK_ROOT:-work_dirs/CIPL_official_shared_lr${lr}_${SLURM_ARRAY_JOB_ID}}
+base=${SOTA_WORK_ROOT:-work_dirs/CIPL_official_grouped_lr_${SLURM_ARRAY_JOB_ID}}
 status=0
-echo "CIPL dataset=${dataset} base_lr=${lr} job=${SLURM_ARRAY_JOB_ID}"
+echo "CIPL dataset=${dataset} job=${SLURM_ARRAY_JOB_ID}"
+echo "Official grouped LR: backbone=0.0001 add-on/prototypes=0.003 last-layer=0.0001"
 echo "Recipe: 15 warmup + 26 full epochs, push at 35/40, 6 refinement epochs per push"
 for seed in 0 1 2 3 4; do
   work="${base}/${dataset}/CIPL/seed${seed}"
@@ -36,7 +36,7 @@ for seed in 0 1 2 3 4; do
     --source-root "${SOTA_SOURCE_ROOT:-third_party/sota}" \
     --annotation-root "${ANNOTATION_ROOT:-data}" \
     --image-root "${IMAGE_ROOT:-/nobackup/projects/bdliv04/jxie/SCIF/data}" \
-    --lr "${lr}" --batch-size "${BATCH_SIZE:-32}" --workers "${WORKERS:-4}" \
+    --batch-size "${BATCH_SIZE:-32}" --workers "${WORKERS:-4}" \
     --seed "${seed}" --work-dir "${work}"; then
     echo "FAILED ${dataset} CIPL seed=${seed}" >&2
     status=1

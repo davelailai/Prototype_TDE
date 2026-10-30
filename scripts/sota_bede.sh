@@ -43,10 +43,14 @@ for seed in 0 1 2 3 4; do
     fi
     continue
   fi
+  lr_args=(--lr "${learning_rate}")
+  if [ "${method}" = CIPL ]; then
+    lr_args=()
+  fi
   if "${PYTHON}" -B tools/SOTA/train.py \
     --method "${method}" --dataset "${dataset}" \
     --image-root "${image_root}" --seed "${seed}" \
-    --protocol "${protocol}" --lr "${learning_rate}" --batch-size "${batch_size}" \
+    --protocol "${protocol}" "${lr_args[@]}" --batch-size "${batch_size}" \
     --work-dir "${base_work}/${dataset}/${method}/seed${seed}"; then
     echo "SUCCESS ${method} ${dataset} seed=${seed}"
   else

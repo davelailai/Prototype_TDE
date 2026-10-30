@@ -8,22 +8,26 @@ generated on the full medical datasets yet.
 
 ## Aligned Comparison Protocol (Default)
 
-### Uniform Base Learning Rate Runs
+### Controlled Optimization Runs
 
-`scripts/sota_bede.sh` explicitly passes `--lr 0.005` to all five methods.
+`scripts/sota_bede.sh` passes `--lr 0.005` to MICCAI2024, MLC-PAT, ProCI and
+BankCausal. CIPL is deliberately exempt because its published training recipe
+requires module-specific rates.
 Its default output is a separate `work_dirs/SOTA_aligned_v2_lr0.005` tree;
 existing results are not modified. For controlled MICCAI2024, MLC-PAT and
 BankCausal runs, the explicit LR must match the reference config. Change the
 shared reference protocol to change this LR, not only one competing method.
-CIPL's backbone, joint-stage groups and last-layer refinement all use this base
-value. CIPL and ProCI retain their method-specific optimizers/schedules.
+CIPL retains its official Adam group rates (backbone 1e-4, add-on/prototypes
+3e-3 and last-layer refinement 1e-4) and method-specific schedule. ProCI also
+retains its method-specific optimizer and schedule.
 MICCAI2024, MLC-PAT and BankCausal use the exact reference SGD/schedulers in
 new aligned training. Historical/native PAT runs retain OneCycle.
-For CIPL and ProCI it is larger than the previous method-specific default, and
-equal numeric learning rates do not guarantee better results or equal tuning.
+For ProCI it is larger than the previous method-specific default. Equal numeric
+learning rates across different optimizers and architectures are not treated as
+a fairness requirement.
 
 New aligned MICCAI2024, MLC-PAT and BankCausal entrypoints use reference
-optimization by default. CIPL uses reference base LR and its own stages.
+optimization by default. CIPL uses its published grouped rates and stages.
 Other direct Python entrypoints retain their previous defaults unless `--lr` is supplied.
 For example, use `train.py ... --lr 0.005` or
 `prepare_prior.py ... --lr 0.005`. The resolved rates are recorded in run settings
@@ -58,18 +62,18 @@ class-count off-by-one). Model selection uses validation mAUC, never test AUC.
 This is an upstream-mechanism adaptation, not a bitwise reproduction of published
 numbers or the original DenseNet/512-pixel recipe.
 
-Aligned CIPL training defaults to the reference base LR when `--lr` is absent;
-the dedicated Bede script explicitly uses 0.005 for backbone, addon, prototypes
-and last-layer refinement. It retains Adam, LR halving at epochs 10/20/25/30/35,
+Aligned CIPL training uses the published grouped rates when `--lr` is absent;
+the dedicated Bede script intentionally omits `--lr`. It retains Adam, LR
+halving at epochs 10/20/25/30/35,
 15 warmup epochs, 41 main epochs, push at 35/40 and six refinement epochs per
 push (53 optimizer dataset passes total). These schedules are not the Q2L
-schedule, and equal base LR does not imply equal optimization or compute.
+schedule, and method-specific optimization does not imply equal compute.
 Do not pool the corrected recipe with earlier adapter runs.
 
 After synchronizing the changed files to the server, activate mmcls and submit:
 
 ```bash
-sbatch --export=ALL,SOTA_LR=0.005 scripts/cipl_official_bede.sh
+sbatch scripts/cipl_official_bede.sh
 ```
 
 The array runs FFA, Endo and ODIR, each with seeds 0-4, in a fresh job-specific

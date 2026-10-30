@@ -114,8 +114,6 @@ def main():
         if args.method == 'MLC-PAT':
             settings.setdefault('activation_checkpointing', True)
     if args.method == 'CIPL' and not args.eval:
-        if args.protocol == 'aligned' and args.lr is None:
-            settings = override_learning_rate(settings, reference['optimizer']['lr'])
         settings['cipl_recipe'] = 'official_mechanisms_v2'
     epochs = args.epochs if args.epochs is not None else settings['epochs']
     if epochs < 1:
